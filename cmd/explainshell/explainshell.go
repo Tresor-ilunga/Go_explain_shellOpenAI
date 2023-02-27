@@ -1,7 +1,11 @@
 package explainshell
 
 import (
-	"fmt"
+	"bytes"
+	"encoding/json"
+	"io/ioutil"
+	"net/http"
+	"os"
 
 	"github.com/spf13/cobra"
 )
@@ -18,8 +22,52 @@ var explainCmd = &cobra.Command{
 	Short: "Provides information about firewall rules for the environment",
 	Long:  `Provides information about firewall rules for the environment`,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println(cmd.Flag("prompt").Value.String())
-		fmt.Println(cmd.Flag("language").Value.String())
+		RequestBody := RequestBody{
+			Model:            "text-davinci-003",
+			Prompt:           "Explain this shell command in " + cmd.Flag("language").Value.String() + ": " + cmd.Flag("prompt").Value.String(),
+			Temperature:      0,
+			MaxTokens:        501,
+			TopP:             1,
+			FrequencyPenalty: 0,
+			PresencePenalty:  0,
+		}
+
+		RequestBodyBytes, err := json.Marshal(RequestBody)
+		if err != nil {
+			panic(err)
+		}
+
+		req, err := http.NewRequest("POST", "https://api.openai.com/v1/engines/davinci/completions", bytes.NewBuffer(RequestBodyBytes))
+		if err != nil {
+			panic(err)
+		}
+
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+os.Getenv("OPENAI_API_KEY"))
+
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		if err != nil {
+			panic(err)
+		}
+		defer resp.Body.Close()
+
+		body, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			panic(err)
+		}
+
+		var TextCompletionResponse TextCompletionResponse
+		err = json.Unmarshal(body, &TextCompletionResponse)
+		if err != nil {
+			panic(err)
+		}
+
+		if len(TextCompletionResponse.Choices) > 0 {
+			println(TextCompletionResponse.Choices[0].Text)
+		} else {
+			println("No explanation found or OpenAI API key is invalid or missing.")
+		}
 	},
 }
 
